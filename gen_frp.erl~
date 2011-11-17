@@ -8,7 +8,7 @@
 
 -export([init_it/6]).
 
--export([oneE/1, timerE/1, formatE/1, mapE/2, collectE/3]).
+-export([timerE/1, formatE/1, mapE/2, collectE/3]).
 
 -export([timer_loop/3, tstamp/0]).
 
@@ -123,18 +123,6 @@ terminate_server(Reason) ->
 %%------------------------------------------------------------------------------
 %% Events
 %%------------------------------------------------------------------------------
-oneE(Val) ->
-    D = case get(graph) of
-	    undefined -> 
-		new_graph();
-	    Other -> Other
-	end,
-    EventID = now(),
-    Event = {event, {one_e,EventID, fun(_X) -> Val end}},
-    digraph:add_vertex(D, Event),
-    propagateE(Event, Val, D), %%Wrong, haven't got any listeners
-    Event.
-    
 timerE(Interval) ->
     D = case get(graph) of
 	    undefined -> 
