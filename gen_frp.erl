@@ -1,12 +1,16 @@
 -module(gen_frp).
 
-%% A behaviour that allows declaring and executing a functional reactive program within a process.
+%% An otp behaviour that allows declaring and executing a functional reactive program within a process.
 
 -export([behaviour_info/1]).
 
 -export([start/1, start_link/1, stop/1]).
 
 -export([init_it/6]).
+
+-export([timerE/1, formatE/1, mapE/2, collectE/3]).
+
+-export([timer_loop/3, tstamp/0]).
 
 -export_type([event/0,start_ret/0]).
 
@@ -16,9 +20,9 @@
 
 -define(reply(X), From ! {element(2,Tag), X}).
 
-%%================================================================================
+%%==============================================================================
 %%%  API
-%%================================================================================
+%%==============================================================================
 
 %% gen_frp:start() -> {ok, Pid} | {error, What}
 %% gen_frp:stop(Pid) -> ok
@@ -67,31 +71,113 @@ stop(P) ->
 %% -spec init_it(pid(), 'self' | pid(), emgr_name(), module(), [term()], [_]) -> 
 init_it(Starter, self, Name, Mod, Args, Options) ->
     init_it(Starter, self(), Name, Mod, Args, Options);
-init_it(Starter, _Parent, _Name0, _, _, _Options) ->
-    process_flag(trap_exit, true),
-    proc_lib:init_ack(Starter, {ok, self()}),
-    loop().
+init_it(Starter, _Parent, _Name0, Mod, Args, _Options) ->
+    process_flag(trap_exit, true), %%?
+    case catch Mod:init(Args) of
+	{ok, State} ->
+	    proc_lib:init_ack(Starter, {ok, self()}),
+	    loop(State);
+	{stop, Reason} ->
+	    proc_lib:init_ack(Starter, {error, Reason}),
+	    exit(Reason);
+	{'EXIT', Reason} ->
+	    proc_lib:init_ack(Starter, {error, Reason}),
+	    exit(Reason);
+	ignore ->
+	    proc_lib:init_ack(Starter, ignore),
+	    exit(normal);
+	Else ->
+	    Error = {bad_return_value, Else},
+	    proc_lib:init_ack(Starter, {error, Error}),
+	    exit(Error)
+    end.
 
-loop() ->
-    fetch_msg().
+loop(State) ->
+    fetch_msg(State).
 
-fetch_msg() ->
+fetch_msg(State) ->
     receive
 	{'EXIT', _Parent, Reason} ->
 	    terminate_server(Reason);
 	Msg ->
-	    handle_msg(Msg)
+	    handle_msg(Msg, State)
     end.
 
-handle_msg(Msg) ->
+handle_msg(Msg, State) ->
     case Msg of
-	{notify, Event} ->
-	    io:format("notify received: ~p~n", Event),
-	    loop();
+	{event, Event, Val} ->
+	    propagateE(Event,Val,get(graph)),
+	    loop(State);
 	{From, Tag, stop} ->
 	    catch terminate_server(Tag),
-	    ?reply(ok)
+	    ?reply(ok);
+	Other ->
+	    io:format("received unmatched msg: ~p~n", [Other]),
+	    loop(State)
     end.
 
 terminate_server(Reason) ->
     exit(Reason).
+
+
+%%------------------------------------------------------------------------------
+%% Events
+%%------------------------------------------------------------------------------
+timerE(Interval) ->
+    D = case get(graph) of
+	    undefined -> 
+		new_graph();
+	    Other -> Other
+	end,
+    EventID = now(),
+    Event = {event, {timer_e,EventID, fun(X) -> X end}},
+    digraph:add_vertex(D, Event),
+    spawn(?MODULE, timer_loop, [self(), Interval, Event]),
+    Event.
+
+timer_loop(Parent, Interval, Event) ->
+    timer:sleep(Interval),
+    Parent ! {event, Event, tstamp()},
+    timer_loop(Parent, Interval, Event).
+
+tstamp() ->
+    {Mega, Sec, M} = now(),
+    Mega * 1000000000 + Sec * 1000 + M.
+
+mapE(Event, F) ->
+    NewEventID = now(),
+    NewEvent = {event,{map_e, NewEventID, F}},
+    add_observer(NewEvent, Event),
+    NewEvent.
+
+collectE(Event, Init, Fold) ->
+    FakeID = now(),
+    put(FakeID, Init),
+    mapE(Event, fun(N) ->
+			Next = Fold(N, get(FakeID)),
+			put(FakeID, Next),
+			Next
+		end).
+
+formatE(Event) ->
+    NewEventID = now(),
+    F = fun(InVal) ->
+		io:format("~p~n", [InVal])
+	end,
+    
+    NewEvent = {event,{format_e, NewEventID, F}},
+    add_observer(NewEvent, Event),
+    NewEvent.
+    
+new_graph() ->
+    G = digraph:new(),
+    put(graph, G),
+    G.
+
+add_observer(Observer, Parent) ->
+    D = get(graph),
+    digraph:add_vertex(D, Observer),
+    digraph:add_edge(D, Parent, Observer).
+
+propagateE(Event,InVal,Graph) ->
+    [propagateE(E, F(InVal), Graph) || {event, {_,_,F}} = E <- digraph:out_neighbours(Graph, Event)].

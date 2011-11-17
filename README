@@ -1,1 +1,9 @@
 Just trying to grok functional reactive programming while learning some Erlang
+
+
+
+$ erl
+...
+1> c(gen_frp).
+2> c(test_frp).
+3> {ok, Pid} = gen_frp:start(test_frp).
