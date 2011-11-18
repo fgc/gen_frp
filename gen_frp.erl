@@ -8,7 +8,9 @@
 
 -export([init_it/6]).
 
--export([oneE/1, timerE/1, formatE/1, mapE/2, mergeE/1, collectE/3]).
+-export([zeroE/0, oneE/1, timerE/1, 
+	 formatE/1, mapE/2, 
+	 mergeE/1, switchE/1, collectE/3]).
 
 -export([timer_loop/3, tstamp/0]).
 
@@ -123,6 +125,17 @@ terminate_server(Reason) ->
 %%------------------------------------------------------------------------------
 %% Events
 %%------------------------------------------------------------------------------
+zeroE() ->
+    D = case get(graph) of
+	    undefined -> 
+		new_graph();
+	    Other -> Other
+	end,
+    EventID = now(),
+    Event = {event, {one_e,EventID, fun(_X) -> nil end}},
+    digraph:add_vertex(D, Event),
+    Event.
+    
 oneE(Val) ->
     D = case get(graph) of
 	    undefined -> 
@@ -168,6 +181,18 @@ mergeE(Events) ->
     NewEvent = {event,{merge_e, NewEventID, fun(X) -> X end}},
     [add_observer(NewEvent, Event) || Event <- Events],
     NewEvent.
+
+%%should cleanup the initial zeroE after the first switch
+switchE(EventStream) ->    
+    NewEventID = now(),
+    AuxEvent = mapE(zeroE(), fun(X) -> X end),
+    F = fun(Event) ->
+		stop_observing(AuxEvent),
+		add_observer(AuxEvent, Event),
+	end,
+    NewEvent = {event,{switch_e, NewEventID, F}},
+    add_observer(NewEvent, EventStream),
+    AuxEvent.
     
 collectE(Event, Init, Fold) ->
     FakeID = now(),
@@ -197,6 +222,14 @@ add_observer(Observer, Parent) ->
     D = get(graph),
     digraph:add_vertex(D, Observer),
     digraph:add_edge(D, Parent, Observer).
+
+%% remove_observer(Observer, Parent) ->
+%%     D = get(graph),
+%%     digraph:del_edge(D,digraph:edge(Parent,Observer)).
+
+stop_observing(Observer) ->
+    Graph = get(graph),
+    [digraph:del_edge(Graph,E) || E <- digraph:in_edges(Graph,Observer)].
 
 propagateE(Event,InVal,Graph) ->
     [propagateE(E, F(InVal), Graph) || {event, {_,_,F}} = E <- digraph:out_neighbours(Graph, Event)].

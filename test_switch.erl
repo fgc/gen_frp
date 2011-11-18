@@ -7,7 +7,8 @@
 init(_Args) ->
     gen_frp:formatE(gen_frp:oneE("Here we go")),
     
-    EvStream = gen_frp:mapE(gen_frp:timerE(5000),fun(X) -> gen_frp:oneE(X) end),
+    EvStream = gen_frp:mapE(gen_frp:timerE(5000),fun(X) -> gen_frp:mapE(gen_frp:timerE(1000), fun (_X) -> X end) end),
+    gen_frp:formatE(EvStream),
     gen_frp:formatE(gen_frp:switchE(EvStream)),
 
     {ok, []}.
