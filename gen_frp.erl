@@ -8,7 +8,7 @@
 
 -export([init_it/6]).
 
--export([oneE/1, timerE/1, formatE/1, mapE/2, collectE/3]).
+-export([oneE/1, timerE/1, formatE/1, mapE/2, mergeE/1, collectE/3]).
 
 -export([timer_loop/3, tstamp/0]).
 
@@ -163,6 +163,12 @@ mapE(Event, F) ->
     add_observer(NewEvent, Event),
     NewEvent.
 
+mergeE(Events) ->
+    NewEventID = now(),
+    NewEvent = {event,{merge_e, NewEventID, fun(X) -> X end}},
+    [add_observer(NewEvent, Event) || Event <- Events],
+    NewEvent.
+    
 collectE(Event, Init, Fold) ->
     FakeID = now(),
     put(FakeID, Init),
