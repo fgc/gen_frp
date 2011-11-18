@@ -132,8 +132,9 @@ oneE(Val) ->
     EventID = now(),
     Event = {event, {one_e,EventID, fun(_X) -> Val end}},
     digraph:add_vertex(D, Event),
-    propagateE(Event, Val, D), %%Wrong, haven't got any listeners
+    self() ! {event, Event, Val},
     Event.
+
     
 timerE(Interval) ->
     D = case get(graph) of
